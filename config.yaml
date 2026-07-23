@@ -1,0 +1,48 @@
+project:
+  name: "watcher-ssm-minimal"
+  seed: 42
+  device: "cuda"
+
+data:
+  raw_path: "data/raw/network_data.csv"
+  timestamp_col: null
+  label_col: "label"
+  binary_label: true
+  attack_label_values: ["attack", "malicious", 1, "Attack", "Malicious"]
+  drop_columns:
+    - "id"
+    - "attack_cat"
+  categorical_columns:
+    - "proto"
+    - "service"
+    - "state"
+  test_size: 0.2
+  val_size: 0.2
+
+windowing:
+  window_size: 32
+  step_size: 16
+  label_strategy: "any_attack"
+
+model:
+  input_dim: null
+  d_model: 128
+  d_state: 16
+  d_conv: 4
+  expand: 2
+  num_classes: 2
+  dropout: 0.1
+  pooling: "last"
+
+training:
+  batch_size: 32
+  epochs: 10
+  learning_rate: 0.0005
+  weight_decay: 0.0001
+  early_stopping_patience: 5
+
+context_builder:
+  num_context_examples: 25
+  include_feature_statistics: true
+  include_model_signal: true
+  include_temporal_notes: true

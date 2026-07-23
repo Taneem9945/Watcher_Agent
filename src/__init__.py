@@ -1,0 +1,1 @@
+"""Watcher-SSM minimal package."""
