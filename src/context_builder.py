@@ -67,6 +67,35 @@ def _build_previous_window_delta(
     return delta
 
 
+def _build_feature_window_delta(
+    previous_context: dict | None,
+    feature_means: dict[str, float],
+) -> dict[str, Any] | None:
+    if previous_context is None:
+        return None
+
+    prev_summary = previous_context.get("window_summary", {})
+    prev_means = prev_summary.get("feature_means", {})
+    shared = [name for name in feature_means if name in prev_means]
+
+    ranked_shared = sorted(
+        shared,
+        key=lambda name: abs(float(feature_means[name]) - float(prev_means[name])),
+        reverse=True,
+    )
+    return {
+        "top_feature_mean_deltas": [
+            {
+                "name": name,
+                "delta": float(feature_means[name]) - float(prev_means[name]),
+                "current_mean": float(feature_means[name]),
+                "previous_mean": float(prev_means[name]),
+            }
+            for name in ranked_shared[:5]
+        ]
+    }
+
+
 def build_context_packet(
     window_id: int,
     X_window,
@@ -101,6 +130,10 @@ def build_context_packet(
         attack_probability=attack_probability,
         feature_means=feature_means,
     )
+    feature_window_delta = _build_feature_window_delta(
+        previous_context=previous_context,
+        feature_means=feature_means,
+    )
 
     signal = model_signal or {
         "prediction": _prediction_label(prediction),
@@ -121,6 +154,7 @@ def build_context_packet(
             "feature_max_values": feature_max_values,
             "feature_min_values": feature_min_values,
             "previous_window_delta": previous_window_delta,
+            "feature_window_delta": feature_window_delta,
         },
     }
     if include_debug_notes:

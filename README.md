@@ -92,6 +92,18 @@ python scripts/replay_rows_as_stream.py --config config.yaml --checkpoint checkp
 
 This replays preprocessed dataset rows one by one as if they are live flow events. A rolling buffer builds model-sized windows before Mamba runs, then Ollama produces the local LLM watcher assessment.
 
+## Web Simulator
+
+```bash
+cd web
+npm.cmd install
+node node_modules/vite/bin/vite.js build
+cd ..
+python scripts/web_simulator_server.py --config config.yaml --checkpoint checkpoints/best_mamba_watcher.pt --port 8000 --web-root web/dist
+```
+
+This starts a local React dashboard backed by a Python WebSocket server. The browser streams window updates, stream-memory state, and Ollama assessments live.
+
 ## Future Work
 
 - Add real-time streaming

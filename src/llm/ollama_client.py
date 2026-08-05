@@ -14,7 +14,7 @@ class OllamaError(RuntimeError):
 class OllamaClient:
     base_url: str = "http://localhost:11434"
     model_name: str = "llama3.1"
-    temperature: float = 0.2
+    temperature: float = 0.0
     timeout: int = 120
 
     def chat_raw(self, messages: list[dict[str, Any]], stream: bool = False) -> str:

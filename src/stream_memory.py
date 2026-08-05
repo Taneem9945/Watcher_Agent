@@ -65,6 +65,7 @@ class StreamMemory:
     confidence_history: list[float] = field(default_factory=list)
     logit_margin_history: list[float] = field(default_factory=list)
     risk_level_history: list[str] = field(default_factory=list)
+    embedding_l2_norm_history: list[float] = field(default_factory=list)
 
     def update(
         self,
@@ -75,6 +76,8 @@ class StreamMemory:
         current_probability = _safe_float(row.get("attack_probability"))
         current_confidence = _safe_float(row.get("confidence"))
         current_margin = _safe_float(row.get("logit_margin"))
+        current_embedding_summary = row.get("embedding_summary") if isinstance(row.get("embedding_summary"), dict) else {}
+        current_embedding_l2_norm = _safe_float(current_embedding_summary.get("l2_norm"))
         current_prediction = row.get("prediction")
         current_risk_level = row.get("risk_level")
         current_window_id = signal_packet.get("window_id")
@@ -129,6 +132,11 @@ class StreamMemory:
             if len(self.risk_level_history) > self.history_limit:
                 self.risk_level_history = self.risk_level_history[-self.history_limit :]
 
+        if current_embedding_l2_norm is not None:
+            self.embedding_l2_norm_history.append(current_embedding_l2_norm)
+            if len(self.embedding_l2_norm_history) > self.history_limit:
+                self.embedding_l2_norm_history = self.embedding_l2_norm_history[-self.history_limit :]
+
         if self.last_prediction is not None and len(self.recent_signals) > 0:
             prev_prediction = self.recent_signals[-1].get("prediction")
             if prev_prediction == self.last_prediction:
@@ -176,12 +184,21 @@ class StreamMemory:
         previous_probability = _safe_float(self.last_signal_row.get("attack_probability"))
         current_margin = _safe_float(current_row.get("logit_margin"))
         previous_margin = _safe_float(self.last_signal_row.get("logit_margin"))
+        current_embedding = current_row.get("embedding_summary") if isinstance(current_row.get("embedding_summary"), dict) else {}
+        previous_embedding = (
+            self.last_signal_row.get("embedding_summary")
+            if isinstance(self.last_signal_row.get("embedding_summary"), dict)
+            else {}
+        )
+        current_embedding_l2 = _safe_float(current_embedding.get("l2_norm"))
+        previous_embedding_l2 = _safe_float(previous_embedding.get("l2_norm"))
 
         delta = {
             "window_id": current_row.get("window_id"),
             "previous_window_id": self.last_signal_row.get("window_id"),
             "attack_probability_delta": None,
             "logit_margin_delta": None,
+            "embedding_l2_norm_delta": None,
             "prediction_changed": None,
             "risk_level_changed": None,
         }
@@ -190,6 +207,8 @@ class StreamMemory:
             delta["attack_probability_delta"] = current_probability - previous_probability
         if current_margin is not None and previous_margin is not None:
             delta["logit_margin_delta"] = current_margin - previous_margin
+        if current_embedding_l2 is not None and previous_embedding_l2 is not None:
+            delta["embedding_l2_norm_delta"] = current_embedding_l2 - previous_embedding_l2
 
         prev_prediction = self.last_signal_row.get("prediction")
         if isinstance(prev_prediction, (int, float)) and isinstance(current_row.get("prediction"), (int, float)):
@@ -212,13 +231,23 @@ class StreamMemory:
             "confidence": row.get("confidence"),
             "logit_margin": row.get("logit_margin"),
             "risk_level": row.get("risk_level"),
+            "embedding_summary": row.get("embedding_summary"),
+            "top_embedding_activations": row.get("top_embedding_activations", [])[:5],
         }
 
     def snapshot(self) -> dict[str, Any]:
         probability_trend = _trend_label(self.attack_probability_history)
         confidence_trend = _trend_label(self.confidence_history)
         margin_trend = _trend_label(self.logit_margin_history)
+        embedding_l2_norm_trend = _trend_label(self.embedding_l2_norm_history)
         last_delta = self.recent_deltas[-1] if self.recent_deltas else None
+        last_embedding_delta = None
+        if last_delta is not None:
+            last_embedding_delta = {
+                "window_id": last_delta.get("window_id"),
+                "previous_window_id": last_delta.get("previous_window_id"),
+                "embedding_l2_norm_delta": last_delta.get("embedding_l2_norm_delta"),
+            }
         return {
             "window_count": int(self.window_count),
             "last_window_id": self.last_window_id,
@@ -234,13 +263,17 @@ class StreamMemory:
             "confidence_history": list(self.confidence_history),
             "logit_margin_history": list(self.logit_margin_history),
             "risk_level_history": list(self.risk_level_history),
+            "embedding_l2_norm_history": list(self.embedding_l2_norm_history),
             "attack_probability_trend": probability_trend,
             "confidence_trend": confidence_trend,
             "logit_margin_trend": margin_trend,
+            "embedding_l2_norm_trend": embedding_l2_norm_trend,
             "rolling_attack_probability_mean": _rolling_mean(self.attack_probability_history),
             "rolling_confidence_mean": _rolling_mean(self.confidence_history),
             "rolling_logit_margin_mean": _rolling_mean(self.logit_margin_history),
+            "rolling_embedding_l2_norm_mean": _rolling_mean(self.embedding_l2_norm_history),
             "recent_signals": list(self.recent_signals),
             "last_signal": self.last_signal_row,
             "last_delta": last_delta,
+            "last_embedding_delta": last_embedding_delta,
         }

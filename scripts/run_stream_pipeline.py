@@ -134,7 +134,7 @@ def main() -> None:
         }
 
         try:
-            result = watcher.assess_context_packet(context_packet)
+            result = watcher.assess_context_packet(context_packet, prompt_mode="encoder")
         except OllamaError as exc:
             raise SystemExit(str(exc)) from exc
         record["llm_assessment"] = {k: v for k, v in result.items() if k != "raw_response_text"}

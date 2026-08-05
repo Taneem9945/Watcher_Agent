@@ -7,7 +7,10 @@ from typing import Any
 import numpy as np
 
 from .ollama_client import OllamaClient, OllamaError
-from .prompts import SYSTEM_PROMPT, build_user_prompt
+from .prompts import SYSTEM_PROMPT, build_llm_brief, build_user_prompt
+
+
+EXPECTED_ASSESSMENT_KEYS = {"assessment", "severity", "summary", "evidence", "recommended_actions", "analyst_note"}
 
 
 def _safe_json_loads(text: str) -> dict[str, Any]:
@@ -27,6 +30,10 @@ def _safe_json_loads(text: str) -> dict[str, Any]:
             except json.JSONDecodeError:
                 pass
         raise OllamaError(f"Ollama did not return valid JSON: {text[:400]}") from exc
+
+
+def _looks_like_assessment(payload: dict[str, Any]) -> bool:
+    return EXPECTED_ASSESSMENT_KEYS.issubset(payload.keys())
 
 
 def _feature_family(name: str) -> str:
@@ -189,15 +196,37 @@ class OllamaWatcher:
     def assess_context_packet(
         self,
         context_packet: dict[str, Any],
+        prompt_mode: str = "blind",
     ) -> dict[str, Any]:
+        llm_input_packet = build_llm_brief(context_packet, mode=prompt_mode)
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": build_user_prompt(context_packet)},
+            {"role": "user", "content": build_user_prompt(context_packet, mode=prompt_mode)},
         ]
         response_text = self.client.chat_raw(messages=messages, stream=False)
         assessment = _safe_json_loads(response_text)
+        if not _looks_like_assessment(assessment):
+            repair_messages = [
+                {
+                    "role": "system",
+                    "content": (
+                        SYSTEM_PROMPT
+                        + "\nThe previous answer was invalid. Rewrite the packet as the required six-key assessment JSON only."
+                        + "\nDo not include wrapper keys or copy the packet structure."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        "Rewrite this security evidence packet into the required assessment JSON schema exactly.\n\n"
+                        f"{json.dumps(llm_input_packet, indent=2)}"
+                    ),
+                },
+            ]
+            response_text = self.client.chat_raw(messages=repair_messages, stream=False)
+            assessment = _safe_json_loads(response_text)
         assessment["window_id"] = int(context_packet.get("window_id", -1))
-        assessment["llm_input_packet"] = context_packet
+        assessment["llm_input_packet"] = llm_input_packet
         assessment["raw_response_text"] = response_text
         return assessment
 
@@ -207,6 +236,7 @@ class OllamaWatcher:
         feature_names: list[str],
         window_id: int,
         previous_packet: dict | None = None,
+        prompt_mode: str = "blind",
     ) -> dict[str, Any]:
         packet = build_window_packet(
             X_window=X_window,
@@ -214,4 +244,4 @@ class OllamaWatcher:
             window_id=window_id,
             previous_packet=previous_packet,
         )
-        return self.assess_context_packet(packet)
+        return self.assess_context_packet(packet, prompt_mode=prompt_mode)

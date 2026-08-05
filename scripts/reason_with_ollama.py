@@ -118,7 +118,7 @@ def main():
                 ),
                 stream_memory=stream_memory.snapshot(),
             )
-            result = watcher.assess_context_packet(context_packet)
+            result = watcher.assess_context_packet(context_packet, prompt_mode="encoder")
         except OllamaError as exc:
             raise SystemExit(str(exc)) from exc
         result["true_label"] = int(y_windows[idx])

@@ -2,7 +2,10 @@
 __pycache__/
 *.pyc
 results/
-data/raw/
+data/
 checkpoints/
 .agents/
+.venv/
+web/node_modules/
+web/dist/
 *.log

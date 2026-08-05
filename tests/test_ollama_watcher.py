@@ -1,6 +1,7 @@
 import numpy as np
 
 from src.llm.ollama_watcher import build_window_packet
+from src.llm.prompts import build_user_prompt
 
 
 def test_build_window_packet_shape():
@@ -16,3 +17,59 @@ def test_build_window_packet_shape():
     assert "top_absolute" in packet["window_summary"]["salient_features"]
     assert "previous_window_delta" in packet["window_summary"]
     assert "temporal_notes" not in packet
+
+
+def test_blind_prompt_omits_detector_verdict_fields():
+    X_window = np.random.randn(32, 4)
+    feature_names = ["dur", "spkts", "dpkts", "rate"]
+    packet = build_window_packet(X_window, feature_names, window_id=4)
+    packet["model_signal"] = {
+        "prediction_label": "attack",
+        "attack_probability": 0.91,
+        "risk_level": "critical",
+    }
+    prompt = build_user_prompt(packet, mode="blind")
+
+    assert "prediction_label" not in prompt
+    assert "attack_probability" not in prompt
+    assert "risk_level" not in prompt
+    assert "model_signal" not in prompt
+
+
+def test_encoder_prompt_includes_representation_without_verdict_fields():
+    X_window = np.random.randn(32, 4)
+    feature_names = ["dur", "spkts", "dpkts", "rate"]
+    packet = build_window_packet(X_window, feature_names, window_id=5)
+    packet["model_signal"] = {
+        "prediction_label": "attack",
+        "attack_probability": 0.91,
+        "risk_level": "critical",
+        "embedding_summary": {
+            "mean": 0.12,
+            "std": 0.34,
+            "min": -0.5,
+            "max": 0.8,
+            "l2_norm": 2.2,
+        },
+        "top_embedding_activations": [
+            {"index": 7, "value": 0.8, "magnitude": 0.8},
+        ],
+    }
+    packet["stream_memory"] = {
+        "window_count": 3,
+        "last_window_id": 4,
+        "attack_probability_ema": 0.7,
+        "embedding_l2_norm_trend": "rising",
+        "rolling_embedding_l2_norm_mean": 2.0,
+        "last_embedding_delta": {"embedding_l2_norm_delta": 0.4},
+    }
+
+    prompt = build_user_prompt(packet, mode="encoder")
+
+    assert "mamba_sequence_representation" in prompt
+    assert "embedding_summary" in prompt
+    assert "top_embedding_activations" in prompt
+    assert "embedding_l2_norm_trend" in prompt
+    assert "prediction_label" not in prompt
+    assert "attack_probability" not in prompt
+    assert "risk_level" not in prompt
