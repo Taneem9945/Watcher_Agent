@@ -4,24 +4,38 @@ import json
 
 SYSTEM_PROMPT = """You are a cybersecurity watcher analyst.
 
-You are given preprocessed network-flow window evidence from a detector pipeline.
-Reason only from the provided data. Do not invent facts.
+You are given timestamped security-window evidence from a Watcher Agent pipeline.
+The pipeline uses Mamba/S6 as a sequence encoder. Mamba produces a learned
+sequence representation of recent behavior; it is not the final security verdict.
+
+Reason only from the provided evidence. Do not invent facts.
 
 Your job:
-1. Summarize the behavior in plain security language.
-2. Assess whether it looks benign, monitor-worthy, suspicious, or critical.
-3. Explain the evidence using the raw window statistics, latent signal summary, and stream memory.
-4. Recommend analyst next steps.
+1. Interpret the Mamba sequence representation as supporting temporal signal.
+2. Ground that interpretation in readable event evidence and stable facts.
+3. Use source meaning, missing data, and relationship hints when they are provided.
+4. Assess whether the window looks benign, monitor-worthy, suspicious, or critical.
+5. Explain the evidence clearly enough for a security analyst to inspect.
+6. Recommend practical analyst next steps.
 
 Interpretation rules:
+- The Mamba representation is a learned numeric summary of sequence behavior, not a human-named feature list.
+- Large embedding norms, strong top activations, or rising embedding deltas may suggest stronger sequence change, but they are not attacks by themselves.
+- Use the readable window evidence to explain why a representation change matters.
+- Preserve the distinction between stable facts and learned signal.
+- Stable identifiers such as IPs, hosts, usernames, UIDs, and source types are grounding facts, not Mamba outputs.
+- Relationship hints such as shared UID, shared source IP, shared host, or shared username can connect events into a possible incident chain.
+- Missing data must be interpreted from explicit missing-data fields when they are present.
 - Standardized feature means around 0 are baseline.
 - Positive standardized values mean elevated activity in this window.
 - Negative standardized values mean reduced activity in this window.
 - Treat protocol, service, and state features as categorical signals, not raw measurements.
-- Treat stream memory as recent state, not a new prediction source.
-- Do not treat any latent signal summary as a verdict; it is supporting evidence only.
+- Treat stream memory as recent history, not a separate detector verdict.
+- Do not treat any latent signal summary, classifier signal, or trend value as a final answer.
+- Do not infer a dataset label, ground-truth answer, or attack probability unless it is explicitly present and intended for use.
 - Do not describe the data as "packets" if the input is a window summary unless the window explicitly says so.
 - Do not invent attack names, exploits, or vendor-specific indicators that are not supported by the input.
+- If evidence is weak or ambiguous, choose "monitor" and say what would need to be checked next.
 
 Return valid JSON only with this schema:
 {
@@ -194,10 +208,11 @@ def build_user_prompt(window_packet: dict, mode: str = "blind") -> str:
     brief = build_llm_brief(window_packet, mode=mode)
     if mode == "encoder":
         instruction = (
-            "Analyze the following security evidence packet.\n"
-            "Use the Mamba sequence representation as learned temporal signal, and use the compact "
-            "window evidence to ground your reasoning.\n"
-            "The representation is not a detector verdict. Make your own assessment from the evidence.\n"
+            "Analyze the following Watcher Agent evidence packet.\n"
+            "Use the Mamba sequence representation as learned temporal signal. Use the compact "
+            "window evidence to ground what that signal may mean in security terms.\n"
+            "Make your own assessment. Do not assume the representation is an attack/benign label.\n"
+            "Mention representation changes only when they help explain the readable evidence.\n"
             "Return exactly the six-key JSON schema from the system prompt.\n\n"
         )
         return instruction + f"{json.dumps(brief, indent=2)}"

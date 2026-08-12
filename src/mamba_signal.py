@@ -102,6 +102,49 @@ def build_mamba_signal_packet(
     return packet
 
 
+def build_mamba_encoder_signal_packet(
+    *,
+    window_ids: list[int],
+    pooled_embedding: torch.Tensor,
+    metadata: list[dict[str, Any]] | None = None,
+    previous_signal: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """
+    Convert Mamba encoder outputs into representation-only signal rows.
+
+    This packet intentionally excludes classifier verdicts such as prediction,
+    attack_probability, and risk_level.
+    """
+    if pooled_embedding.ndim != 2:
+        raise ValueError("pooled_embedding must have shape [batch_size, hidden_dim]")
+    if len(window_ids) != pooled_embedding.shape[0]:
+        raise ValueError("window_ids length must match pooled_embedding batch size")
+    if metadata is not None and len(metadata) != pooled_embedding.shape[0]:
+        raise ValueError("metadata length must match pooled_embedding batch size")
+
+    signal_rows: list[dict[str, Any]] = []
+    for i in range(pooled_embedding.shape[0]):
+        row: dict[str, Any] = {
+            "window_id": int(window_ids[i]),
+            "row_index": int(i),
+            "signal_type": "mamba_encoder_representation",
+            "embedding_summary": _tensor_stats(pooled_embedding[i]),
+            "top_embedding_activations": _top_activations(pooled_embedding[i], top_k=8),
+        }
+        if metadata is not None:
+            row["window_metadata"] = dict(metadata[i])
+        signal_rows.append(row)
+
+    packet: dict[str, Any] = {
+        "batch_size": int(pooled_embedding.shape[0]),
+        "signal_type": "mamba_encoder_representation",
+        "signal_rows": signal_rows,
+    }
+    if previous_signal is not None:
+        packet["previous_signal"] = previous_signal
+    return packet
+
+
 @torch.no_grad()
 def infer_window_signal(
     model,
@@ -128,5 +171,42 @@ def infer_window_signal(
         logits=logits,
         pooled_embedding=pooled_embedding,
         true_label=true_label,
+        previous_signal=previous_signal,
+    )
+
+
+@torch.no_grad()
+def infer_window_encoder_signal(
+    model,
+    X_window,
+    window_id: int,
+    mask=None,
+    device: torch.device | str = "cpu",
+    metadata: dict[str, Any] | None = None,
+    previous_signal: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """
+    Run a single window through the Mamba encoder and return representation-only signals.
+    """
+    model.eval()
+    x = torch.tensor(np.asarray(X_window), dtype=torch.float32, device=device)
+    if x.ndim == 2:
+        x = x.unsqueeze(0)
+    elif x.ndim != 3:
+        raise ValueError("X_window must be 2D or 3D")
+
+    mask_tensor = None
+    if mask is not None:
+        mask_tensor = torch.tensor(np.asarray(mask), dtype=torch.float32, device=device)
+        if mask_tensor.ndim == 1:
+            mask_tensor = mask_tensor.unsqueeze(0)
+        elif mask_tensor.ndim != 2:
+            raise ValueError("mask must be 1D or 2D")
+
+    pooled_embedding = model.encode(x, mask=mask_tensor)
+    return build_mamba_encoder_signal_packet(
+        window_ids=[int(window_id)],
+        pooled_embedding=pooled_embedding,
+        metadata=[metadata or {}],
         previous_signal=previous_signal,
     )

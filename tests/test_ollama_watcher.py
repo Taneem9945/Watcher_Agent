@@ -1,7 +1,7 @@
 import numpy as np
 
 from src.llm.ollama_watcher import build_window_packet
-from src.llm.prompts import build_user_prompt
+from src.llm.prompts import SYSTEM_PROMPT, build_user_prompt
 
 
 def test_build_window_packet_shape():
@@ -73,3 +73,12 @@ def test_encoder_prompt_includes_representation_without_verdict_fields():
     assert "prediction_label" not in prompt
     assert "attack_probability" not in prompt
     assert "risk_level" not in prompt
+
+
+def test_system_prompt_describes_encoder_direction():
+    assert "Mamba/S6 as a sequence encoder" in SYSTEM_PROMPT
+    assert "not the final security verdict" in SYSTEM_PROMPT
+    assert "learned numeric summary" in SYSTEM_PROMPT
+    assert "stable facts and learned signal" in SYSTEM_PROMPT
+    assert "Relationship hints" in SYSTEM_PROMPT
+    assert "ground-truth answer" in SYSTEM_PROMPT

@@ -45,26 +45,42 @@ class MambaWatcher(nn.Module):
             nn.Linear(d_model, num_classes),
         )
 
-    def encode(self, x):
+    def _pool_hidden(self, h, mask=None):
+        if mask is None:
+            if self.pooling == "last":
+                return h[:, -1, :]
+            if self.pooling == "mean":
+                return h.mean(dim=1)
+        else:
+            mask = mask.to(device=h.device, dtype=h.dtype)
+            if mask.ndim != 2:
+                raise ValueError("mask must have shape [batch_size, sequence_length]")
+            if mask.shape != h.shape[:2]:
+                raise ValueError("mask shape must match hidden sequence shape")
+            lengths = mask.sum(dim=1).clamp(min=1)
+            if self.pooling == "last":
+                last_indices = (lengths.long() - 1).view(-1, 1, 1).expand(-1, 1, h.shape[-1])
+                return h.gather(dim=1, index=last_indices).squeeze(1)
+            if self.pooling == "mean":
+                return (h * mask.unsqueeze(-1)).sum(dim=1) / lengths.unsqueeze(-1)
+        raise ValueError(f"Unsupported pooling method: {self.pooling}")
+
+    def encode(self, x, mask=None):
         """
         Return pooled sequence representations for downstream signal building.
 
         x shape: [batch_size, sequence_length, input_dim]
+        mask shape, optional: [batch_size, sequence_length]
         """
         x = self.input_proj(x)
         x = self.dropout(x)
         h = self.mamba(x)
-        if self.pooling == "last":
-            return h[:, -1, :]
-        elif self.pooling == "mean":
-            return h.mean(dim=1)
-        else:
-            raise ValueError(f"Unsupported pooling method: {self.pooling}")
+        return self._pool_hidden(h, mask=mask)
 
-    def forward(self, x):
+    def forward(self, x, mask=None):
         """
         x shape: [batch_size, sequence_length, input_dim]
         """
-        h = self.encode(x)
+        h = self.encode(x, mask=mask)
         logits = self.classifier(h)
         return logits

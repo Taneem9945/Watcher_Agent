@@ -1,0 +1,40 @@
+prototype:
+  name: "p025-mixed-minimal"
+  description: "Initial P025 mixed-log slice for the Watcher Agent prototype."
+  dataset_root: "data/P025_Complete/P025"
+  scenario_path: "user1014/ckc1c/1"
+  window_seconds: 60
+  log_year: 2025
+  log_timezone: "UTC"
+
+selected_sources:
+  - id: "zeek_conn"
+    source_type: "zeek_conn"
+    parser: "zeek_json"
+    role: "network_connection"
+    path: "zeek/conn.log"
+    required: true
+
+  - id: "zeek_http"
+    source_type: "zeek_http"
+    parser: "zeek_json"
+    role: "http_activity"
+    path: "zeek/http.log"
+    required: true
+
+  - id: "host_auth_sjs08a"
+    source_type: "host_auth"
+    parser: "linux_auth_text"
+    role: "host_authentication"
+    host: "sjs08a"
+    path: "sjs08a/auth.log"
+    required: true
+
+future_sources:
+  - "zeek/dns.log"
+  - "zeek/ssh.log"
+  - "zeek/files.log"
+  - "suricata/eve.json"
+  - "suricata/fast.log"
+  - "*/bt.jsonl"
+  - "pcapsensor/*.pcap"

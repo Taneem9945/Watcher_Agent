@@ -12,18 +12,19 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.replay_session import ReplaySession
+from src.mixed_data.web_session import P025WebReplaySession
 
 
 async def create_app(args: argparse.Namespace) -> web.Application:
     max_windows = None if int(args.max_windows) <= 0 else int(args.max_windows)
-    session = ReplaySession(
-        config_path=args.config,
-        checkpoint_path=args.checkpoint,
-        start_row=args.start_row,
+    session = P025WebReplaySession(
+        packets_path=args.packets,
+        assessments_path=args.assessments,
+        start_window=args.start_window,
         max_windows=max_windows,
         ollama_model=args.model,
         ollama_base_url=args.base_url,
+        ollama_timeout=args.timeout,
     )
     app = web.Application()
     app["session"] = session
@@ -128,16 +129,17 @@ async def create_app(args: argparse.Namespace) -> web.Application:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", default="config.yaml")
-    parser.add_argument("--checkpoint", default="checkpoints/best_mamba_watcher.pt")
     parser.add_argument("--web-root", default="web/dist")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
-    parser.add_argument("--start-row", type=int, default=0)
+    parser.add_argument("--packets", default="results/p025_llm_packets.jsonl")
+    parser.add_argument("--assessments", default="results/p025_web_ollama_assessments.jsonl")
+    parser.add_argument("--start-window", type=int, default=0)
     parser.add_argument("--max-windows", type=int, default=0)
-    parser.add_argument("--delay", type=float, default=0.1)
+    parser.add_argument("--delay", type=float, default=1.0)
     parser.add_argument("--model", default="llama3.1")
     parser.add_argument("--base-url", default="http://localhost:11434")
+    parser.add_argument("--timeout", type=int, default=240)
     args = parser.parse_args()
 
     app = asyncio.run(create_app(args))
